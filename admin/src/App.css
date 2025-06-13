@@ -1,0 +1,23 @@
+.size-selector {
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  user-select: none;
+}
+
+.size-selector.selected {
+  background-color: #a01a66; /* Màu hồng nhạt, khớp với bg-pink-100 */
+  transform: scale(1.05); /* Phóng to nhẹ khi chọn */
+}
+
+.size-selector:not(.selected) {
+  background-color: #e2e8f0; /* Màu xám, khớp với bg-slate-200 */
+}
+
+.size-selector:hover {
+  opacity: 0.9; /* Hiệu ứng hover nhẹ */
+}

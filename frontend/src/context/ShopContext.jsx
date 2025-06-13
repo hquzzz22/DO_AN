@@ -7,7 +7,7 @@ export const ShopContext = createContext();
 
 const ShopContextProvider = (props) => {
   const currency = "VND";
-  const delivery_fee = 10;
+  const delivery_fee = 30000; // Phí giao hàng
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -41,11 +41,11 @@ const ShopContextProvider = (props) => {
         await axios.post(
           backendUrl + "/api/cart/add",
           { itemId, size },
-          { headers: { token } }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
       } catch (error) {
-        console.log(error);
-        toast.error(error.message);
+        console.error("Lỗi trong addToCart:", error.response?.data || error);
+        toast.error(error.response?.data?.message || error.message);
       }
     }
   };
@@ -76,11 +76,14 @@ const ShopContextProvider = (props) => {
         await axios.post(
           backendUrl + "/api/cart/update",
           { itemId, size, quantity },
-          { headers: { token } }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
       } catch (error) {
-        console.log(error);
-        toast.error(error.message);
+        console.error(
+          "Lỗi trong updateQuantity:",
+          error.response?.data || error
+        );
+        toast.error(error.response?.data?.message || error.message);
       }
     }
   };
@@ -109,8 +112,11 @@ const ShopContextProvider = (props) => {
         toast.error(response.data.message);
       }
     } catch (error) {
-      console.log(error);
-      toast.error(error.message);
+      console.error(
+        "Lỗi trong getProductsData:",
+        error.response?.data || error
+      );
+      toast.error(error.response?.data?.message || error.message);
     }
   };
 
@@ -119,14 +125,80 @@ const ShopContextProvider = (props) => {
       const response = await axios.post(
         backendUrl + "/api/cart/get",
         {},
-        { headers: { token } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       if (response.data.success) {
         setCartItems(response.data.cartData);
       }
     } catch (error) {
-      console.log(error);
-      toast.error(error.message);
+      console.error("Lỗi trong getUserCart:", error.response?.data || error);
+      toast.error(error.response?.data?.message || error.message);
+    }
+  };
+
+  const addComment = async (productId, comment, rating) => {
+    if (!token) {
+      toast.error("Vui lòng đăng nhập để bình luận");
+      navigate("/login");
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        backendUrl + "/api/comment/add",
+        { productId, comment, rating },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        toast.success("Bình luận đã được thêm");
+        return response.data.data;
+      } else {
+        toast.error(response.data.message);
+        return null;
+      }
+    } catch (error) {
+      console.error("Lỗi trong addComment:", error.response?.data || error);
+      toast.error(error.response?.data?.message || error.message);
+      return null;
+    }
+  };
+
+  const getComments = async (productId) => {
+    try {
+      const response = await axios.get(
+        backendUrl + `/api/comment/product/${productId}`
+      );
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        toast.error(response.data.message);
+        return [];
+      }
+    } catch (error) {
+      console.error("Lỗi trong getComments:", error.response?.data || error);
+      toast.error(error.response?.data?.message || error.message);
+      return [];
+    }
+  };
+
+  const getAverageRating = async (productId) => {
+    try {
+      const response = await axios.get(
+        backendUrl + `/api/comment/product/${productId}/average-rating`
+      );
+      if (response.data.success) {
+        return response.data.averageRating;
+      } else {
+        toast.error(response.data.message);
+        return 0;
+      }
+    } catch (error) {
+      console.error(
+        "Lỗi trong getAverageRating:",
+        error.response?.data || error
+      );
+      toast.error(error.response?.data?.message || error.message);
+      return 0;
     }
   };
 
@@ -162,6 +234,9 @@ const ShopContextProvider = (props) => {
     backendUrl,
     setToken,
     token,
+    addComment,
+    getComments,
+    getAverageRating,
   };
 
   return (
