@@ -27,10 +27,25 @@ const Edit = ({ token }) => {
   const [colors, setColors] = useState([]);
   const [colorImageFiles, setColorImageFiles] = useState({}); // new uploads only
   const [stockMatrix, setStockMatrix] = useState({}); // {color:{size:stock}}
+  const [costMatrix, setCostMatrix] = useState({}); // {color:{size:cost}}
+
+  // Restock (increment) matrix
+  const [restockMatrix, setRestockMatrix] = useState({}); // {color:{size:increment}}
+  const [restocking, setRestocking] = useState(false);
 
   // Legacy images (optional)
-  const [legacyFiles, setLegacyFiles] = useState({ image1: null, image2: null, image3: null, image4: null });
-  const [legacyPreview, setLegacyPreview] = useState({ image1: null, image2: null, image3: null, image4: null });
+  const [legacyFiles, setLegacyFiles] = useState({
+    image1: null,
+    image2: null,
+    image3: null,
+    image4: null,
+  });
+  const [legacyPreview, setLegacyPreview] = useState({
+    image1: null,
+    image2: null,
+    image3: null,
+    image4: null,
+  });
 
   const selectedSizes = useMemo(
     () => SIZE_OPTIONS.filter((s) => sizes.includes(s)),
@@ -60,21 +75,39 @@ const Edit = ({ token }) => {
       const initialSizes = Array.isArray(p.sizes) && p.sizes.length ? p.sizes : [];
       setSizes(initialSizes);
 
-      const initialColors = Array.isArray(p.colors) && p.colors.length
-        ? p.colors
-        : Object.keys(p.colorImages || {});
+      const initialColors =
+        Array.isArray(p.colors) && p.colors.length
+          ? p.colors
+          : Object.keys(p.colorImages || {});
       setColors(initialColors);
 
-      // Build matrix from variants
-      const matrix = {};
+      // Build matrices from variants
+      const stock = {};
+      const cost = {};
       (initialColors || []).forEach((c) => {
-        matrix[c] = {};
+        stock[c] = {};
+        cost[c] = {};
       });
+
       (p.variants || []).forEach((v) => {
-        if (!matrix[v.color]) matrix[v.color] = {};
-        matrix[v.color][v.size] = v.stock;
+        if (!stock[v.color]) stock[v.color] = {};
+        if (!cost[v.color]) cost[v.color] = {};
+        stock[v.color][v.size] = v.stock;
+        cost[v.color][v.size] = v.cost ?? 0;
       });
-      setStockMatrix(matrix);
+
+      setStockMatrix(stock);
+      setCostMatrix(cost);
+
+      // Reset restock matrix
+      const restock = {};
+      (initialColors || []).forEach((c) => {
+        restock[c] = {};
+        (initialSizes || []).forEach((s) => {
+          restock[c][s] = 0;
+        });
+      });
+      setRestockMatrix(restock);
 
       // Reset new uploads
       setColorImageFiles({});
@@ -107,7 +140,9 @@ const Edit = ({ token }) => {
     }
     setColors((prev) => [...prev, c]);
     setStockMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
+    setCostMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
     setColorImageFiles((prev) => ({ ...prev, [c]: prev[c] || [] }));
+    setRestockMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
     setColorInput("");
   };
 
@@ -118,7 +153,17 @@ const Edit = ({ token }) => {
       delete next[c];
       return next;
     });
+    setCostMatrix((prev) => {
+      const next = { ...prev };
+      delete next[c];
+      return next;
+    });
     setColorImageFiles((prev) => {
+      const next = { ...prev };
+      delete next[c];
+      return next;
+    });
+    setRestockMatrix((prev) => {
       const next = { ...prev };
       delete next[c];
       return next;
@@ -141,16 +186,41 @@ const Edit = ({ token }) => {
     }));
   };
 
+  const setCost = (color, size, value) => {
+    const num = value === "" ? "" : Math.max(0, Number(value));
+    setCostMatrix((prev) => ({
+      ...prev,
+      [color]: {
+        ...(prev[color] || {}),
+        [size]: num,
+      },
+    }));
+  };
+
+  const setRestock = (color, size, value) => {
+    const num = value === "" ? "" : Math.max(0, Number(value));
+    setRestockMatrix((prev) => ({
+      ...prev,
+      [color]: {
+        ...(prev[color] || {}),
+        [size]: num,
+      },
+    }));
+  };
+
   const buildVariants = () => {
     const variants = [];
     for (const c of colors) {
       for (const s of selectedSizes) {
-        const raw = stockMatrix?.[c]?.[s];
-        const stock = Number(raw);
+        const rawStock = stockMatrix?.[c]?.[s];
+        const stock = Number(rawStock);
+        const rawCost = costMatrix?.[c]?.[s];
+        const cost = Number(rawCost);
         variants.push({
           color: c,
           size: s,
           stock: Number.isFinite(stock) ? stock : 0,
+          cost: Number.isFinite(cost) ? cost : 0,
         });
       }
     }
@@ -164,6 +234,45 @@ const Edit = ({ token }) => {
     }
   };
 
+  const submitRestock = async () => {
+    try {
+      setRestocking(true);
+
+      const restockItems = [];
+      for (const c of colors) {
+        for (const s of selectedSizes) {
+          const qty = Number(restockMatrix?.[c]?.[s] ?? 0);
+          if (Number.isFinite(qty) && qty > 0) {
+            restockItems.push({ color: c, size: s, quantity: qty });
+          }
+        }
+      }
+
+      if (restockItems.length === 0) {
+        toast.info("Chưa nhập số lượng cần cộng thêm");
+        return;
+      }
+
+      const response = await axios.post(
+        backendUrl + "/api/product/restock",
+        { productId: id, items: restockItems },
+        { headers: { token } }
+      );
+
+      if (response.data.success) {
+        toast.success(response.data.message || "Nhập kho thành công");
+        await fetchProduct();
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.message || error.message);
+    } finally {
+      setRestocking(false);
+    }
+  };
+
   const validateBeforeSubmit = () => {
     if (!sizes.length) {
       toast.error("Vui lòng chọn ít nhất 1 size");
@@ -174,7 +283,6 @@ const Edit = ({ token }) => {
       return false;
     }
 
-    // For edit: allow not uploading new images if product already has images for that color.
     for (const c of colors) {
       const hasExisting = !!(product?.colorImages?.[c]?.length);
       const hasNew = (colorImageFiles?.[c] || []).length > 0;
@@ -208,13 +316,11 @@ const Edit = ({ token }) => {
       formData.append("colors", JSON.stringify(colors));
       formData.append("variants", JSON.stringify(buildVariants()));
 
-      // Optional legacy images
       if (legacyFiles.image1) formData.append("image1", legacyFiles.image1);
       if (legacyFiles.image2) formData.append("image2", legacyFiles.image2);
       if (legacyFiles.image3) formData.append("image3", legacyFiles.image3);
       if (legacyFiles.image4) formData.append("image4", legacyFiles.image4);
 
-      // Upload new images per color: fieldname color_<ColorName>_<index>
       for (const c of colors) {
         const imgs = colorImageFiles[c] || [];
         imgs.forEach((file, idx) => {
@@ -272,7 +378,7 @@ const Edit = ({ token }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block mb-1">Giá</label>
+            <label className="block mb-1">Giá bán</label>
             <input
               type="number"
               value={price}
@@ -313,7 +419,6 @@ const Edit = ({ token }) => {
           <label htmlFor="bestseller">Bestseller</label>
         </div>
 
-        {/* Sizes */}
         <div>
           <p className="mb-2 font-medium">Size</p>
           <div className="flex flex-wrap gap-2">
@@ -322,9 +427,15 @@ const Edit = ({ token }) => {
                 type="button"
                 key={s}
                 onClick={() =>
-                  setSizes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+                  setSizes((prev) =>
+                    prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+                  )
                 }
-                className={`px-3 py-1 border rounded text-sm ${sizes.includes(s) ? "bg-pink-100 border-pink-300" : "bg-slate-200"}`}
+                className={`px-3 py-1 border rounded text-sm ${
+                  sizes.includes(s)
+                    ? "bg-pink-100 border-pink-300"
+                    : "bg-slate-200"
+                }`}
               >
                 {s}
               </button>
@@ -332,7 +443,6 @@ const Edit = ({ token }) => {
           </div>
         </div>
 
-        {/* Colors */}
         <div>
           <p className="mb-2 font-medium">Màu (Colors)</p>
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -343,7 +453,11 @@ const Edit = ({ token }) => {
               placeholder='Nhập màu, ví dụ: Black / Trắng / Đỏ...'
               type="text"
             />
-            <button type="button" onClick={addColor} className="px-4 py-2 bg-black text-white rounded">
+            <button
+              type="button"
+              onClick={addColor}
+              className="px-4 py-2 bg-black text-white rounded"
+            >
               Thêm màu
             </button>
           </div>
@@ -351,9 +465,16 @@ const Edit = ({ token }) => {
           {colors.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {colors.map((c) => (
-                <span key={c} className="inline-flex items-center gap-2 px-3 py-1 border rounded bg-white">
+                <span
+                  key={c}
+                  className="inline-flex items-center gap-2 px-3 py-1 border rounded bg-white"
+                >
                   <b className="text-sm">{c}</b>
-                  <button type="button" onClick={() => removeColor(c)} className="text-xs text-red-600">
+                  <button
+                    type="button"
+                    onClick={() => removeColor(c)}
+                    className="text-xs text-red-600"
+                  >
                     Xoá
                   </button>
                 </span>
@@ -362,55 +483,10 @@ const Edit = ({ token }) => {
           )}
         </div>
 
-        {/* Images per color */}
-        {colors.length > 0 && (
-          <div>
-            <p className="mb-2 font-medium">Ảnh theo màu</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {colors.map((c) => (
-                <div key={c} className="border rounded p-3 bg-white">
-                  <p className="font-medium">Màu: {c}</p>
-
-                  {/* Existing images */}
-                  {(product?.colorImages?.[c]?.length || 0) > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {product.colorImages[c].slice(0, 6).map((url, idx) => (
-                        <img key={idx} src={url} alt="" className="w-16 h-16 object-cover rounded border" />
-                      ))}
-                      {product.colorImages[c].length > 6 && (
-                        <span className="text-xs text-gray-500">+{product.colorImages[c].length - 6} ảnh</span>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-3">
-                    <p className="text-sm text-gray-600">Upload ảnh mới (nếu muốn thay/ghi đè màu này)</p>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={(e) => onChangeColorImages(c, e.target.files)}
-                      className="mt-2"
-                    />
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(colorImageFiles[c] || []).slice(0, 6).map((f, idx) => (
-                        <img key={idx} src={URL.createObjectURL(f)} alt="" className="w-16 h-16 object-cover rounded border" />
-                      ))}
-                      {(colorImageFiles[c] || []).length > 6 && (
-                        <span className="text-xs text-gray-500">+{(colorImageFiles[c] || []).length - 6} ảnh</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Stock matrix */}
         {colors.length > 0 && selectedSizes.length > 0 && (
           <div>
-            <p className="mb-2 font-medium">Tồn kho theo Size x Màu</p>
+            <p className="mb-2 font-medium">Tồn kho theo Size x Màu (đặt đúng số hiện có)</p>
             <div className="overflow-x-auto w-full">
               <table className="min-w-[700px] w-full border-collapse bg-white">
                 <thead>
@@ -447,6 +523,160 @@ const Edit = ({ token }) => {
           </div>
         )}
 
+        {/* Cost matrix */}
+        {colors.length > 0 && selectedSizes.length > 0 && (
+          <div>
+            <p className="mb-2 font-medium">Giá nhập theo Size x Màu</p>
+            <div className="overflow-x-auto w-full">
+              <table className="min-w-[700px] w-full border-collapse bg-white">
+                <thead>
+                  <tr>
+                    <th className="border p-2 text-left">Màu \\ Size</th>
+                    {selectedSizes.map((s) => (
+                      <th key={s} className="border p-2 text-left">
+                        {s}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {colors.map((c) => (
+                    <tr key={c}>
+                      <td className="border p-2 font-medium">{c}</td>
+                      {selectedSizes.map((s) => (
+                        <td key={s} className="border p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={costMatrix?.[c]?.[s] ?? 0}
+                            onChange={(e) => setCost(c, s, e.target.value)}
+                            className="w-28 px-2 py-1 border rounded"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">Nhập giá nhập (VNĐ) cho từng biến thể.</p>
+          </div>
+        )}
+
+        {/* Restock matrix (increment stock) */}
+        {colors.length > 0 && selectedSizes.length > 0 && (
+          <div>
+            <p className="mb-2 font-medium">Nhập kho (cộng thêm)</p>
+            <div className="overflow-x-auto w-full">
+              <table className="min-w-[700px] w-full border-collapse bg-white">
+                <thead>
+                  <tr>
+                    <th className="border p-2 text-left">Màu \\ Size</th>
+                    {selectedSizes.map((s) => (
+                      <th key={s} className="border p-2 text-left">
+                        {s}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {colors.map((c) => (
+                    <tr key={c}>
+                      <td className="border p-2 font-medium">{c}</td>
+                      {selectedSizes.map((s) => (
+                        <td key={s} className="border p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={restockMatrix?.[c]?.[s] ?? 0}
+                            onChange={(e) => setRestock(c, s, e.target.value)}
+                            className="w-24 px-2 py-1 border rounded"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              type="button"
+              onClick={submitRestock}
+              className={`mt-3 px-4 py-2 rounded bg-black text-white text-sm ${
+                restocking ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              disabled={restocking}
+            >
+              {restocking ? "Đang nhập kho..." : "NHẬP KHO (CỘNG THÊM)"}
+            </button>
+
+            <p className="text-xs text-gray-500 mt-2">
+              Chỉ nhập số lượng cần cộng thêm. Ô nào để 0 sẽ không thay đổi.
+            </p>
+          </div>
+        )}
+
+        {/* Images per color */}
+        {colors.length > 0 && (
+          <div>
+            <p className="mb-2 font-medium">Ảnh theo màu</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {colors.map((c) => (
+                <div key={c} className="border rounded p-3 bg-white">
+                  <p className="font-medium">Màu: {c}</p>
+
+                  {(product?.colorImages?.[c]?.length || 0) > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {product.colorImages[c].slice(0, 6).map((url, idx) => (
+                        <img
+                          key={idx}
+                          src={url}
+                          alt=""
+                          className="w-16 h-16 object-cover rounded border"
+                        />
+                      ))}
+                      {product.colorImages[c].length > 6 && (
+                        <span className="text-xs text-gray-500">
+                          +{product.colorImages[c].length - 6} ảnh
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3">
+                    <p className="text-sm text-gray-600">
+                      Upload ảnh mới (nếu muốn thay/ghi đè màu này)
+                    </p>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(e) => onChangeColorImages(c, e.target.files)}
+                      className="mt-2"
+                    />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(colorImageFiles[c] || []).slice(0, 6).map((f, idx) => (
+                        <img
+                          key={idx}
+                          src={URL.createObjectURL(f)}
+                          alt=""
+                          className="w-16 h-16 object-cover rounded border"
+                        />
+                      ))}
+                      {(colorImageFiles[c] || []).length > 6 && (
+                        <span className="text-xs text-gray-500">
+                          +{(colorImageFiles[c] || []).length - 6} ảnh
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Legacy images (optional) */}
         <div>
           <p className="mb-2 font-medium">Ảnh chung (tuỳ chọn)</p>
@@ -454,9 +684,18 @@ const Edit = ({ token }) => {
             {(["image1", "image2", "image3", "image4"]).map((k, idx) => (
               <div key={k}>
                 <label className="block mb-1">Hình ảnh {idx + 1}</label>
-                <input type="file" onChange={(e) => handleLegacyFile(k, e.target.files?.[0] || null)} />
+                <input
+                  type="file"
+                  onChange={(e) =>
+                    handleLegacyFile(k, e.target.files?.[0] || null)
+                  }
+                />
                 {legacyPreview[k] ? (
-                  <img src={legacyPreview[k]} alt={k} className="w-24 mt-2 border rounded" />
+                  <img
+                    src={legacyPreview[k]}
+                    alt={k}
+                    className="w-24 mt-2 border rounded"
+                  />
                 ) : null}
               </div>
             ))}
@@ -465,7 +704,9 @@ const Edit = ({ token }) => {
 
         <button
           type="submit"
-          className={`bg-blue-600 text-white p-2 rounded w-48 ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+          className={`bg-blue-600 text-white p-2 rounded w-48 ${
+            isLoading ? "opacity-50 cursor-not-allowed" : ""
+          }`}
           disabled={isLoading}
         >
           {isLoading ? "Đang cập nhật..." : "Cập nhật sản phẩm"}

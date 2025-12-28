@@ -8,6 +8,7 @@ import productRouter from "./routes/productRoute.js";
 import cartRouter from "./routes/cartRoute.js";
 import orderRouter from "./routes/orderRoute.js";
 import commentRouter from "./routes/comment.js";
+import reportRouter from "./routes/reportRoute.js";
 
 // App Config
 const app = express();
@@ -25,6 +26,7 @@ app.use("/api/product", productRouter);
 app.use("/api/cart", cartRouter);
 app.use("/api/order", orderRouter);
 app.use("/api/comment", commentRouter);
+app.use("/api/report", reportRouter);
 
 app.get("/", (req, res) => {
   res.send("API Working");

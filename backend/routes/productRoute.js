@@ -5,6 +5,7 @@ import {
   removeProduct,
   singleProduct,
   editProduct,
+  restockProduct,
   searchProducts,
   addComment,
   getComments,
@@ -30,6 +31,10 @@ productRouter.post(
   upload.any(),
   editProduct
 );
+
+// Admin: restock (increment stock for variants)
+productRouter.post("/restock", adminAuth, restockProduct);
+
 productRouter.post("/search", searchProducts);
 productRouter.post("/addComment", addComment);
 productRouter.post("/getComments", getComments);

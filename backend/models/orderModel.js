@@ -2,7 +2,25 @@ import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema({
   userId: { type: String, required: true },
-  items: { type: Array, required: true },
+
+  // Store order items in a consistent structured format
+  // NOTE: legacy orders may have different shapes; admin UI will handle them.
+  items: {
+    type: [
+      {
+        productId: { type: String },
+        name: { type: String },
+        price: { type: Number }, // giá bán tại thời điểm mua
+        costPrice: { type: Number, default: 0 }, // giá nhập snapshot tại thời điểm mua
+        image: { type: [String], default: [] },
+        size: { type: String },
+        color: { type: String },
+        quantity: { type: Number, required: true },
+      },
+    ],
+    required: true,
+  },
+
   amount: { type: Number, required: true },
   address: { type: Object, required: true },
   status: { type: String, required: true, default: "Order Placed" },

@@ -7,22 +7,25 @@ import List from "./pages/List";
 import Orders from "./pages/Orders";
 import ManageUsers from "./pages/ManageUsers";
 import Login from "./components/Login";
-import SearchOrders from "../src/pages/SearchOrders"; // Thêm import
+import SearchOrders from "../src/pages/SearchOrders";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Edit from "./pages/Edit";
 import SearchUsers from "./pages/SearchUsers";
+import Revenue from "./pages/Revenue";
 
-export const backendUrl = import.meta.env.VITE_BACKEND_URL;
+export const backendUrl =
+  import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 export const currency = "VND";
 
 const App = () => {
+  // Use a dedicated key to avoid conflicts with user app token
   const [token, setToken] = useState(
-    localStorage.getItem("token") ? localStorage.getItem("token") : ""
+    localStorage.getItem("adminToken") ? localStorage.getItem("adminToken") : ""
   );
 
   useEffect(() => {
-    localStorage.setItem("token", token);
+    localStorage.setItem("adminToken", token);
   }, [token]);
 
   return (
@@ -42,6 +45,7 @@ const App = () => {
                 <Route path="/list" element={<List token={token} />} />
                 <Route path="/edit/:id" element={<Edit token={token} />} />
                 <Route path="/orders" element={<Orders token={token} />} />
+                <Route path="/revenue" element={<Revenue token={token} />} />
                 <Route
                   path="/search-orders"
                   element={<SearchOrders token={token} />}

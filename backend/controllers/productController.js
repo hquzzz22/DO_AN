@@ -2,6 +2,9 @@ import { v2 as cloudinary } from "cloudinary";
 import productModel from "../models/productModel.js";
 import commentModel from "../models/commentModel.js";
 
+// Helpers
+const normalizeColorKey = (c) => String(c || "").trim();
+
 // Hàm thêm sản phẩm
 const addProduct = async (req, res) => {
   try {
@@ -37,8 +40,7 @@ const addProduct = async (req, res) => {
 
     for (const file of colorFiles) {
       const parts = file.fieldname.split("_");
-      // e.g. ["color", "Black", "0"]
-      const color = parts[1];
+      const color = normalizeColorKey(parts[1]);
       if (!color) continue;
 
       let result = await cloudinary.uploader.upload(file.path, {
@@ -67,8 +69,6 @@ const addProduct = async (req, res) => {
       image: imagesUrl.length ? imagesUrl : [],
       date: Date.now(),
     };
-
-    console.log(productData);
 
     const product = new productModel(productData);
     await product.save();
@@ -160,29 +160,29 @@ const editProduct = async (req, res) => {
     }
 
     // Build colorImages from uploaded files
-    const colorImages = {};
+    const uploadedColorImages = {};
     const colorFiles = files.filter((f) => f.fieldname.startsWith("color_"));
 
     for (const file of colorFiles) {
       const parts = file.fieldname.split("_");
-      const color = parts[1];
+      const color = normalizeColorKey(parts[1]);
       if (!color) continue;
 
       let result = await cloudinary.uploader.upload(file.path, {
         resource_type: "image",
       });
 
-      if (!colorImages[color]) colorImages[color] = [];
-      colorImages[color].push(result.secure_url);
+      if (!uploadedColorImages[color]) uploadedColorImages[color] = [];
+      uploadedColorImages[color].push(result.secure_url);
     }
 
-    if (Object.keys(colorImages).length) {
+    if (Object.keys(uploadedColorImages).length) {
       // Merge with existing colorImages
-      const existing = (await productModel.findById(productId))?.colorImages || {};
-      updateData.colorImages = { ...existing, ...colorImages };
+      const existing =
+        (await productModel.findById(productId))?.colorImages || {};
+      updateData.colorImages = { ...existing, ...uploadedColorImages };
     }
 
-    // Cập nhật sản phẩm trong cơ sở dữ liệu
     const updatedProduct = await productModel.findByIdAndUpdate(
       productId,
       { $set: updateData },
@@ -204,6 +204,63 @@ const editProduct = async (req, res) => {
   }
 };
 
+// Nhập kho: cộng thêm số lượng theo biến thể (size + color)
+// body: { productId, items: [{size,color,quantity}] }
+const restockProduct = async (req, res) => {
+  try {
+    const { productId, items } = req.body;
+
+    if (!productId) {
+      return res.json({ success: false, message: "Thiếu productId" });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.json({ success: false, message: "Thiếu danh sách nhập kho" });
+    }
+
+    const product = await productModel.findById(productId);
+    if (!product) {
+      return res.json({ success: false, message: "Không tìm thấy sản phẩm" });
+    }
+
+    // Build maps for quick update
+    const colorsSet = new Set(product.colors || []);
+    const sizesSet = new Set(product.sizes || []);
+
+    for (const it of items) {
+      const size = String(it.size || "").trim();
+      const color = normalizeColorKey(it.color);
+      const qty = Number(it.quantity);
+
+      if (!size || !color) continue;
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+
+      colorsSet.add(color);
+      sizesSet.add(size);
+
+      const idx = (product.variants || []).findIndex(
+        (v) => v.size === size && v.color === color
+      );
+
+      if (idx >= 0) {
+        product.variants[idx].stock = (Number(product.variants[idx].stock) || 0) + qty;
+      } else {
+        product.variants.push({ size, color, stock: qty });
+      }
+    }
+
+    product.colors = Array.from(colorsSet);
+    product.sizes = Array.from(sizesSet);
+
+    await product.save();
+
+    return res.json({ success: true, message: "Nhập kho thành công", product });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
 // Hàm tìm kiếm sản phẩm
 const searchProducts = async (req, res) => {
   try {
@@ -211,7 +268,7 @@ const searchProducts = async (req, res) => {
     const query = {};
 
     if (name) {
-      query.name = { $regex: name, $options: "i" }; // Tìm kiếm không phân biệt hoa thường
+      query.name = { $regex: name, $options: "i" };
     }
     if (category) {
       query.category = { $regex: category, $options: "i" };
@@ -285,6 +342,7 @@ export {
   removeProduct,
   singleProduct,
   editProduct,
+  restockProduct,
   searchProducts,
   addComment,
   getComments,

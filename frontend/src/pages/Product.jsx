@@ -5,6 +5,19 @@ import { assets } from "../assets/assets";
 import RelatedProducts from "../components/RelatedProducts";
 import { toast } from "react-toastify";
 
+// Merge arrays, remove falsy, de-duplicate (keep order)
+const uniq = (arr) => {
+  const seen = new Set();
+  const out = [];
+  (arr || []).forEach((x) => {
+    if (!x) return;
+    if (seen.has(x)) return;
+    seen.add(x);
+    out.push(x);
+  });
+  return out;
+};
+
 const Product = () => {
   const { productId } = useParams();
   const {
@@ -27,6 +40,8 @@ const Product = () => {
   const [comments, setComments] = useState([]);
   const [averageRating, setAverageRating] = useState(0);
 
+  const [galleryMode, setGalleryMode] = useState("color"); // 'color' | 'all'
+
   const variants = productData?.variants || [];
 
   const getStock = (s, c) => {
@@ -35,7 +50,10 @@ const Product = () => {
     return typeof v?.stock === "number" ? v.stock : null;
   };
 
-  const selectedStock = useMemo(() => getStock(size, color), [size, color, productData]);
+  const selectedStock = useMemo(
+    () => getStock(size, color),
+    [size, color, productData]
+  );
 
   const availableColors = useMemo(() => {
     if (!productData) return [];
@@ -56,16 +74,51 @@ const Product = () => {
     return stock !== null && stock <= 0;
   };
 
+  const getColorImages = (p, c) => {
+    const imgs = p?.colorImages?.[c];
+    return Array.isArray(imgs) ? imgs : [];
+  };
+
+  const getFallbackImages = (p) => {
+    return Array.isArray(p?.image) ? p.image : [];
+  };
+
+  const galleryImages = useMemo(() => {
+    if (!productData) return [];
+
+    const colorImgs = color ? getColorImages(productData, color) : [];
+    const fallback = getFallbackImages(productData);
+
+    if (galleryMode === "all") {
+      return uniq([...colorImgs, ...fallback]);
+    }
+
+    // galleryMode === 'color'
+    return colorImgs.length ? uniq(colorImgs) : uniq(fallback);
+  }, [productData, color, galleryMode]);
+
+  const ensureImageInGallery = () => {
+    if (!galleryImages.length) {
+      setImage("");
+      return;
+    }
+    if (!image || !galleryImages.includes(image)) {
+      setImage(galleryImages[0]);
+    }
+  };
+
   const fetchProductData = async () => {
     products.forEach((item) => {
       if (item._id === productId) {
         setProductData(item);
 
-        const colorImgs = item.colorImages && Object.keys(item.colorImages).length ? item.colorImages : null;
-        if (colorImgs) {
-          const firstColor = Object.keys(colorImgs)[0];
-          const firstImg = colorImgs[firstColor]?.[0];
+        // pick a default color (if any)
+        const hasColorImages = item.colorImages && Object.keys(item.colorImages).length;
+        if (hasColorImages) {
+          const firstColor = Object.keys(item.colorImages)[0];
           setColor(firstColor);
+
+          const firstImg = item.colorImages[firstColor]?.[0];
           setImage(firstImg || item.image?.[0] || "");
         } else {
           setImage(item.image?.[0] || "");
@@ -120,6 +173,13 @@ const Product = () => {
     fetchAverageRating();
   }, [productId, products]);
 
+  // Keep main image consistent with gallery
+  useEffect(() => {
+    if (!productData) return;
+    ensureImageInGallery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryImages.join("|")]);
+
   const renderStars = (rating) => {
     const stars = [];
     for (let i = 1; i <= 5; i++) {
@@ -141,15 +201,14 @@ const Product = () => {
         {/* Images */}
         <div className="flex-1 flex flex-col-reverse gap-3 sm:flex-row">
           <div className="flex sm:flex-col overflow-x-auto sm:overflow-y-scroll justify-between sm:justify-normal sm:w-[18.7%] w-full">
-            {(productData.colorImages?.[color]?.length
-              ? productData.colorImages[color]
-              : productData.image
-            )?.map((item, index) => (
+            {galleryImages.map((img, index) => (
               <img
-                onClick={() => setImage(item)}
-                src={item}
+                onClick={() => setImage(img)}
+                src={img}
                 key={index}
-                className="w-[24%] sm:w-full sm:mb-3 flex-shrink-0 cursor-pointer"
+                className={`w-[24%] sm:w-full sm:mb-3 flex-shrink-0 cursor-pointer border ${
+                  img === image ? "border-orange-500" : "border-transparent"
+                }`}
                 alt=""
               />
             ))}
@@ -172,6 +231,28 @@ const Product = () => {
           </p>
           <p className="mt-5 text-gray-500 md:w-4/5">{productData.description}</p>
 
+          {/* Gallery mode */}
+          <div className="mt-4 flex flex-wrap gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setGalleryMode("color")}
+              className={`px-3 py-1 border rounded ${
+                galleryMode === "color" ? "border-orange-500" : ""
+              }`}
+            >
+              Ảnh theo màu
+            </button>
+            <button
+              type="button"
+              onClick={() => setGalleryMode("all")}
+              className={`px-3 py-1 border rounded ${
+                galleryMode === "all" ? "border-orange-500" : ""
+              }`}
+            >
+              Tất cả ảnh
+            </button>
+          </div>
+
           {/* Color */}
           <div className="flex flex-col gap-2 my-6">
             <p>Chọn màu</p>
@@ -184,8 +265,11 @@ const Product = () => {
                     onClick={() => {
                       if (disabled) return;
                       setColor(c);
-                      const imgs = productData.colorImages?.[c];
-                      if (imgs?.length) setImage(imgs[0]);
+                      // reset gallery main image to first color image if exists
+                      const imgs = getColorImages(productData, c);
+                      const fallback = getFallbackImages(productData);
+                      const next = imgs.length ? imgs[0] : fallback[0];
+                      if (next) setImage(next);
                     }}
                     className={`border py-2 px-4 bg-gray-100 text-sm ${
                       c === color ? "border-orange-500" : ""
@@ -328,9 +412,7 @@ const Product = () => {
                       <div className="flex">{renderStars(comment.rating)}</div>
                     </div>
                     <p>{comment.comment}</p>
-                    <p className="text-xs">
-                      {new Date(comment.date).toLocaleDateString()}
-                    </p>
+                    <p className="text-xs">{new Date(comment.date).toLocaleDateString()}</p>
                   </div>
                 ))
               ) : (

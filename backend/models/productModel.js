@@ -22,6 +22,8 @@ const productSchema = new mongoose.Schema({
         size: { type: String, required: true },
         color: { type: String, required: true },
         stock: { type: Number, required: true, default: 0 },
+        price: { type: Number, required: true, default: 0 }, // giá bán theo biến thể
+        cost: { type: Number, required: true, default: 0 }, // giá nhập
         sku: { type: String },
       },
     ],

@@ -31,6 +31,12 @@ const Add = ({ token }) => {
   const [stockMatrix, setStockMatrix] = useState({});
   // { [color]: { [size]: number } }
 
+  const [priceMatrix, setPriceMatrix] = useState({});
+  // { [color]: { [size]: number } } - giá bán theo biến thể
+
+  const [costMatrix, setCostMatrix] = useState({});
+  // { [color]: { [size]: number } } - giá nhập theo biến thể
+
   const [isLoading, setIsLoading] = useState(false);
 
   const selectedSizes = useMemo(
@@ -47,6 +53,8 @@ const Add = ({ token }) => {
     }
     setColors((prev) => [...prev, c]);
     setStockMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
+    setPriceMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
+    setCostMatrix((prev) => ({ ...prev, [c]: prev[c] || {} }));
     setColorImageFiles((prev) => ({ ...prev, [c]: prev[c] || [] }));
     setColorInput("");
   };
@@ -54,6 +62,16 @@ const Add = ({ token }) => {
   const removeColor = (c) => {
     setColors((prev) => prev.filter((x) => x !== c));
     setStockMatrix((prev) => {
+      const next = { ...prev };
+      delete next[c];
+      return next;
+    });
+    setPriceMatrix((prev) => {
+      const next = { ...prev };
+      delete next[c];
+      return next;
+    });
+    setCostMatrix((prev) => {
       const next = { ...prev };
       delete next[c];
       return next;
@@ -81,16 +99,44 @@ const Add = ({ token }) => {
     }));
   };
 
+  const setVariantPrice = (color, size, value) => {
+    const num = value === "" ? "" : Math.max(0, Number(value));
+    setPriceMatrix((prev) => ({
+      ...prev,
+      [color]: {
+        ...(prev[color] || {}),
+        [size]: num,
+      },
+    }));
+  };
+
+  const setCost = (color, size, value) => {
+    const num = value === "" ? "" : Math.max(0, Number(value));
+    setCostMatrix((prev) => ({
+      ...prev,
+      [color]: {
+        ...(prev[color] || {}),
+        [size]: num,
+      },
+    }));
+  };
+
   const buildVariants = () => {
     const variants = [];
     for (const c of colors) {
       for (const s of selectedSizes) {
         const raw = stockMatrix?.[c]?.[s];
         const stock = Number(raw);
+        const rawPrice = priceMatrix?.[c]?.[s];
+        const price = Number(rawPrice);
+        const rawCost = costMatrix?.[c]?.[s];
+        const cost = Number(rawCost);
         variants.push({
           color: c,
           size: s,
           stock: Number.isFinite(stock) ? stock : 0,
+          price: Number.isFinite(price) ? price : 0,
+          cost: Number.isFinite(cost) ? cost : 0,
         });
       }
     }
@@ -173,6 +219,8 @@ const Add = ({ token }) => {
         setColorInput("");
         setColorImageFiles({});
         setStockMatrix({});
+        setPriceMatrix({});
+        setCostMatrix({});
       } else {
         toast.error(response.data.message);
       }
@@ -387,6 +435,87 @@ const Add = ({ token }) => {
           <p className="text-xs text-gray-500 mt-2">
             Gợi ý: nhập 0 nếu biến thể không bán / hết hàng.
           </p>
+        </div>
+      )}
+
+      {/* Price matrix */}
+      {colors.length > 0 && selectedSizes.length > 0 && (
+        <div className="w-full">
+          <p className="mb-2 font-medium">Giá bán theo Size x Màu (để trống/0 sẽ lấy theo Giá sản phẩm chung)</p>
+          <div className="overflow-x-auto w-full">
+            <table className="min-w-[700px] w-full border-collapse bg-white">
+              <thead>
+                <tr>
+                  <th className="border p-2 text-left">Màu \\ Size</th>
+                  {selectedSizes.map((s) => (
+                    <th key={s} className="border p-2 text-left">
+                      {s}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {colors.map((c) => (
+                  <tr key={c}>
+                    <td className="border p-2 font-medium">{c}</td>
+                    {selectedSizes.map((s) => (
+                      <td key={s} className="border p-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={priceMatrix?.[c]?.[s] ?? ""}
+                          onChange={(e) => setVariantPrice(c, s, e.target.value)}
+                          placeholder={price || "0"}
+                          className="w-28 px-2 py-1 border rounded"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Nhập giá bán (VNĐ) cho từng biến thể.</p>
+        </div>
+      )}
+
+      {/* Cost matrix */}
+      {colors.length > 0 && selectedSizes.length > 0 && (
+        <div className="w-full">
+          <p className="mb-2 font-medium">Giá nhập theo Size x Màu</p>
+          <div className="overflow-x-auto w-full">
+            <table className="min-w-[700px] w-full border-collapse bg-white">
+              <thead>
+                <tr>
+                  <th className="border p-2 text-left">Màu \\ Size</th>
+                  {selectedSizes.map((s) => (
+                    <th key={s} className="border p-2 text-left">
+                      {s}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {colors.map((c) => (
+                  <tr key={c}>
+                    <td className="border p-2 font-medium">{c}</td>
+                    {selectedSizes.map((s) => (
+                      <td key={s} className="border p-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={costMatrix?.[c]?.[s] ?? 0}
+                          onChange={(e) => setCost(c, s, e.target.value)}
+                          className="w-28 px-2 py-1 border rounded"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Nhập giá nhập (VNĐ) cho từng biến thể.</p>
         </div>
       )}
 

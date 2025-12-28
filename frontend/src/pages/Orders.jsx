@@ -18,7 +18,6 @@ const Orders = () => {
         return;
       }
 
-      console.log("Token:", token); // Log để debug
       const response = await axios.post(
         `${backendUrl}/api/order/userorders`,
         {},
@@ -41,7 +40,6 @@ const Orders = () => {
           toast.info("No orders found");
         }
       } else {
-        console.error("Failed to load orders:", response.data.message);
         toast.error(response.data.message || "Failed to load orders");
       }
     } catch (error) {
@@ -68,6 +66,7 @@ const Orders = () => {
       <div>
         {loading && <p>Loading orders...</p>}
         {!loading && orderData.length === 0 && <p>No orders found.</p>}
+
         {orderData.map((item, index) => (
           <div
             key={index}
@@ -83,13 +82,14 @@ const Orders = () => {
                 <p className="sm:text-base font-medium">
                   {item.name || "Unknown Product"}
                 </p>
-                <div className="flex items-center gap-3 mt-1 text-base text-gray-700">
+                <div className="flex flex-wrap items-center gap-3 mt-1 text-base text-gray-700">
                   <p>
                     {currency}
                     {item.price || 0}
                   </p>
                   <p>Quantity: {item.quantity || 0}</p>
                   <p>Size: {item.size || "N/A"}</p>
+                  <p>Màu: {item.color || "N/A"}</p>
                 </div>
                 <p className="mt-1">
                   Date:{" "}
@@ -105,12 +105,11 @@ const Orders = () => {
                 </p>
               </div>
             </div>
+
             <div className="md:w-1/2 flex justify-between">
               <div className="flex items-center gap-2">
                 <p className="min-w-2 h-2 rounded-full bg-green-500"></p>
-                <p className="text-sm md:text-base">
-                  {item.status || "Unknown"}
-                </p>
+                <p className="text-sm md:text-base">{item.status || "Unknown"}</p>
               </div>
               <button
                 onClick={loadOrderData}

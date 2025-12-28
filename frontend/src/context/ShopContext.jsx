@@ -3,13 +3,11 @@ import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
-// Tạo context cho Shop
-// Context này sẽ chứa các dữ liệu và hàm cần thiết cho toàn bộ ứng dụng
 export const ShopContext = createContext();
 
 const ShopContextProvider = (props) => {
   const currency = "VND";
-  const delivery_fee = 30000; // Phí giao hàng
+  const delivery_fee = 30000;
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -20,13 +18,26 @@ const ShopContextProvider = (props) => {
 
   const makeVariantKey = (size, color) => `${size}|${color}`;
 
-  const getVariantStock = (itemId, size, color) => {
+  const getVariant = (itemId, size, color) => {
     const p = products.find((x) => x._id === itemId);
-    const v = p?.variants?.find((vv) => vv.size === size && vv.color === color);
+    return p?.variants?.find((vv) => vv.size === size && vv.color === color) || null;
+  };
+
+  const getVariantStock = (itemId, size, color) => {
+    const v = getVariant(itemId, size, color);
     return typeof v?.stock === "number" ? v.stock : null;
   };
 
-  //Thêm vào giỏ (variant-aware)
+  const getVariantPrice = (itemId, size, color) => {
+    const p = products.find((x) => x._id === itemId);
+    const v = getVariant(itemId, size, color);
+    // Fallback: if variant price is missing/0, use product base price
+    const vp = typeof v?.price === "number" ? v.price : null;
+    if (vp !== null && vp > 0) return vp;
+    const base = typeof p?.price === "number" ? p.price : null;
+    return base;
+  };
+
   const addToCart = async (itemId, size, color) => {
     if (!size || !color) {
       toast.error("Vui lòng chọn size và màu");
@@ -35,7 +46,12 @@ const ShopContextProvider = (props) => {
 
     const key = makeVariantKey(size, color);
 
-    // Frontend-side stock guard (UX). Backend will still validate.
+    const price = getVariantPrice(itemId, size, color);
+    if (price === null || price <= 0) {
+      toast.error("Sản phẩm/biến thể này chưa có giá bán");
+      return;
+    }
+
     const stock = getVariantStock(itemId, size, color);
     const currentQty = cartItems?.[itemId]?.[key] || 0;
     if (stock !== null && (stock <= 0 || currentQty + 1 > stock)) {
@@ -43,7 +59,6 @@ const ShopContextProvider = (props) => {
       return;
     }
 
-    // Optimistic update
     const prevCart = structuredClone(cartItems);
     const nextCart = structuredClone(cartItems);
 
@@ -60,12 +75,10 @@ const ShopContextProvider = (props) => {
         );
 
         if (!res.data?.success) {
-          // Rollback if backend rejects (e.g. out-of-stock)
           setCartItems(prevCart);
           toast.error(res.data?.message || "Không thể thêm vào giỏ hàng");
         }
       } catch (error) {
-        // Rollback on network/server error
         setCartItems(prevCart);
         console.error("Lỗi trong addToCart:", error.response?.data || error);
         toast.error(error.response?.data?.message || error.message);
@@ -73,7 +86,6 @@ const ShopContextProvider = (props) => {
     }
   };
 
-  //Lấy tổng số lượng trong giỏ:
   const getCartCount = () => {
     let totalCount = 0;
     for (const items in cartItems) {
@@ -88,11 +100,15 @@ const ShopContextProvider = (props) => {
     return totalCount;
   };
 
-  // Cập nhật số lượng sản phẩm trong giỏ:
   const updateQuantity = async (itemId, size, color, quantity) => {
     const key = makeVariantKey(size, color);
 
-    // Frontend-side stock guard
+    const price = getVariantPrice(itemId, size, color);
+    if (price === null || price <= 0) {
+      toast.error("Sản phẩm/biến thể này chưa có giá bán");
+      return;
+    }
+
     const stock = getVariantStock(itemId, size, color);
     if (stock !== null && Number(quantity) > stock) {
       toast.error("Số lượng vượt quá tồn kho");
@@ -105,9 +121,9 @@ const ShopContextProvider = (props) => {
     if (!nextCart[itemId]) nextCart[itemId] = {};
     nextCart[itemId][key] = quantity;
 
-    // clean up
     if (nextCart[itemId][key] === 0) delete nextCart[itemId][key];
-    if (nextCart[itemId] && Object.keys(nextCart[itemId]).length === 0) delete nextCart[itemId];
+    if (nextCart[itemId] && Object.keys(nextCart[itemId]).length === 0)
+      delete nextCart[itemId];
 
     setCartItems(nextCart);
 
@@ -125,32 +141,32 @@ const ShopContextProvider = (props) => {
         }
       } catch (error) {
         setCartItems(prevCart);
-        console.error(
-          "Lỗi trong updateQuantity:",
-          error.response?.data || error
-        );
+        console.error("Lỗi trong updateQuantity:", error.response?.data || error);
         toast.error(error.response?.data?.message || error.message);
       }
     }
   };
 
-  //Tính tổng tiền hàng:
+  // Compute cart total using variant price
   const getCartAmount = () => {
     let totalAmount = 0;
-    for (const items in cartItems) {
-      let itemInfo = products.find((product) => product._id === items);
-      for (const item in cartItems[items]) {
-        try {
-          if (cartItems[items][item] > 0) {
-            totalAmount += itemInfo.price * cartItems[items][item];
-          }
-        } catch (error) {}
+
+    for (const productId in cartItems) {
+      for (const key in cartItems[productId]) {
+        const qty = cartItems[productId][key];
+        if (!qty || qty <= 0) continue;
+
+        const [size, color] = String(key).split("|");
+        const price = getVariantPrice(productId, size, color);
+        if (price === null) continue;
+
+        totalAmount += price * qty;
       }
     }
+
     return totalAmount;
   };
 
-  // Lấy danh sách sản phẩm từ backend:
   const getProductsData = async () => {
     try {
       const response = await axios.get(backendUrl + "/api/product/list");
@@ -160,15 +176,11 @@ const ShopContextProvider = (props) => {
         toast.error(response.data.message);
       }
     } catch (error) {
-      console.error(
-        "Lỗi trong getProductsData:",
-        error.response?.data || error
-      );
+      console.error("Lỗi trong getProductsData:", error.response?.data || error);
       toast.error(error.response?.data?.message || error.message);
     }
   };
 
-  //Lấy giỏ hàng người dùng (đã đăng nhập):
   const getUserCart = async (token) => {
     try {
       const response = await axios.post(
@@ -185,7 +197,6 @@ const ShopContextProvider = (props) => {
     }
   };
 
-  //7. Bình luận sản phẩm:
   const addComment = async (productId, comment, rating) => {
     if (!token) {
       toast.error("Vui lòng đăng nhập để bình luận");
@@ -213,7 +224,6 @@ const ShopContextProvider = (props) => {
     }
   };
 
-  // Lấy bình luận của sản phẩm:
   const getComments = async (productId) => {
     try {
       const response = await axios.get(
@@ -232,7 +242,6 @@ const ShopContextProvider = (props) => {
     }
   };
 
-  // Lấy đánh giá trung bình của sản phẩm:
   const getAverageRating = async (productId) => {
     try {
       const response = await axios.get(
@@ -245,10 +254,7 @@ const ShopContextProvider = (props) => {
         return 0;
       }
     } catch (error) {
-      console.error(
-        "Lỗi trong getAverageRating:",
-        error.response?.data || error
-      );
+      console.error("Lỗi trong getAverageRating:", error.response?.data || error);
       toast.error(error.response?.data?.message || error.message);
       return 0;
     }
@@ -291,9 +297,7 @@ const ShopContextProvider = (props) => {
     getAverageRating,
   };
 
-  return (
-    <ShopContext.Provider value={value}>{props.children}</ShopContext.Provider>
-  );
+  return <ShopContext.Provider value={value}>{props.children}</ShopContext.Provider>;
 };
 
 export default ShopContextProvider;

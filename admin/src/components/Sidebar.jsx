@@ -32,13 +32,17 @@ const Sidebar = () => {
 
         <NavLink
           className="flex items-center gap-3 border border-gray-300 border-r-0 px-3 py-2 rounded-l"
+          to="/revenue"
+        >
+          <img className="w-5 h-5" src={assets.order_icon} alt="Revenue" />
+          <p className="hidden md:block">Doanh thu & Lợi nhuận</p>
+        </NavLink>
+
+        <NavLink
+          className="flex items-center gap-3 border border-gray-300 border-r-0 px-3 py-2 rounded-l"
           to="/search-orders"
         >
-          <img
-            className="w-5 h-5"
-            src={assets.order_icon}
-            alt="Search Orders"
-          />
+          <img className="w-5 h-5" src={assets.order_icon} alt="Search Orders" />
           <p className="hidden md:block">Tìm kiếm đơn hàng</p>
         </NavLink>
 
