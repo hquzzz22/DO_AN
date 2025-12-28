@@ -3,6 +3,7 @@ import React from "react";
 import { ShopContext } from "../context/ShopContext";
 import Title from "./Title";
 import ProductItem from "./ProductItem";
+// Thành phần này hiển thị những sản phẩm bán chạy nhất trong cửa hàng.
 
 const BestSeller = () => {
   const { products } = useContext(ShopContext);

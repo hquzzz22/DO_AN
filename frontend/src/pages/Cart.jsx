@@ -5,20 +5,34 @@ import { assets } from "../assets/assets";
 import CartTotal from "../components/CartTotal";
 
 const Cart = () => {
+  // Sử dụng context để lấy dữ liệu và hàm từ ShopContext
   const { products, currency, cartItems, updateQuantity, navigate } =
     useContext(ShopContext);
 
+  // State để lưu trữ dữ liệu giỏ hàng đã được xử lý
+  // Mảng này sẽ chứa các sản phẩm trong giỏ hàng với thông tin chi tiết
   const [cartData, setCartData] = useState([]);
 
+  // Sử dụng useEffect để cập nhật cartData mỗi khi cartItems hoặc products thay đổi
+  // Lặp qua cartItems và tìm sản phẩm tương ứng trong products
+  //   useEffect chạy khi cartItems hoặc products thay đổi.
+  // Kiểm tra xem products có dữ liệu không (products.length > 0).
+  // Nếu có, tạo một mảng tempData rỗng.
+  // Lặp qua các sản phẩm trong cartItems (dựa trên ID sản phẩm).
+  // Với mỗi sản phẩm, lặp qua các kích cỡ (S, M, L, ...).
+  // Nếu số lượng của kích cỡ đó lớn hơn 0, tạo một object chứa _id, size, và quantity, rồi thêm vào tempData.
+  // Cập nhật state cartData với tempData.
   useEffect(() => {
     if (products.length > 0) {
       const tempData = [];
       for (const items in cartItems) {
         for (const item in cartItems[items]) {
           if (cartItems[items][item] > 0) {
+            const [size, color] = String(item).split("|");
             tempData.push({
               _id: items,
-              size: item,
+              size,
+              color,
               quantity: cartItems[items][item],
             });
           }
@@ -48,20 +62,23 @@ const Cart = () => {
               <div className=" flex items-start gap-6">
                 <img
                   className="w-16 sm:w-20"
-                  src={productData.image[0]}
+                  src={(productData.colorImages?.[item.color]?.[0]) || productData.image[0]}
                   alt=""
                 />
                 <div>
                   <p className="text-xs sm:text-lg font-medium">
                     {productData.name}
                   </p>
-                  <div className="flex items-center gap-5 mt-2">
+                  <div className="flex flex-wrap items-center gap-3 mt-2">
                     <p>
                       {currency}
                       {productData.price}
                     </p>
-                    <p className="px-2 sm:px-3 sm:py-1 border bg-slate-50">
-                      {item.size}
+                    <p className="px-2 sm:px-3 sm:py-1 border bg-slate-50 text-xs sm:text-sm">
+                      Size: {item.size}
+                    </p>
+                    <p className="px-2 sm:px-3 sm:py-1 border bg-slate-50 text-xs sm:text-sm">
+                      Màu: {item.color}
                     </p>
                   </div>
                 </div>
@@ -73,6 +90,7 @@ const Cart = () => {
                     : updateQuantity(
                         item._id,
                         item.size,
+                        item.color,
                         Number(e.target.value)
                       )
                 }
@@ -82,7 +100,7 @@ const Cart = () => {
                 defaultValue={item.quantity}
               />
               <img
-                onClick={() => updateQuantity(item._id, item.size, 0)}
+                onClick={() => updateQuantity(item._id, item.size, item.color, 0)}
                 className="w-4 mr-4 sm:w-5 cursor-pointer"
                 src={assets.bin_icon}
                 alt=""

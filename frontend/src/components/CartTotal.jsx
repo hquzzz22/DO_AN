@@ -1,8 +1,10 @@
 import React, { useContext } from "react";
 import { ShopContext } from "../context/ShopContext";
 import Title from "./Title";
-
+// Thành phần này hiển thị tổng tiền của giỏ hàng, bao gồm tiền sản phẩm và phí ship.
 const CartTotal = () => {
+  // Sử dụng context để lấy dữ liệu và hàm từ ShopContext
+  // Lấy các giá trị cần thiết từ context
   const { currency, delivery_fee, getCartAmount } = useContext(ShopContext);
 
   return (
@@ -15,14 +17,14 @@ const CartTotal = () => {
         <div className="flex justify-between">
           <p>Tiền Sản Phẩm</p>
           <p>
-            {currency} {getCartAmount()}.00
+            {getCartAmount()}.00 {currency}
           </p>
         </div>
         <hr />
         <div className="flex justify-between">
           <p>Phí Ship</p>
           <p>
-            {currency} {delivery_fee}.00
+            {delivery_fee}.00 {currency}
           </p>
         </div>
         <hr />

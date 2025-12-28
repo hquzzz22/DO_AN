@@ -1,9 +1,9 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ShopContext } from "../context/ShopContext";
 import { assets } from "../assets/assets";
 import RelatedProducts from "../components/RelatedProducts";
-import { toast } from "react-toastify"; // Thêm import react-toastify
+import { toast } from "react-toastify";
 
 const Product = () => {
   const { productId } = useParams();
@@ -16,20 +16,60 @@ const Product = () => {
     getAverageRating,
     token,
   } = useContext(ShopContext);
+
   const [productData, setProductData] = useState(false);
   const [image, setImage] = useState("");
   const [size, setSize] = useState("");
+  const [color, setColor] = useState("");
   const [activeTab, setActiveTab] = useState("description");
   const [comment, setComment] = useState("");
   const [rating, setRating] = useState(1);
   const [comments, setComments] = useState([]);
   const [averageRating, setAverageRating] = useState(0);
 
+  const variants = productData?.variants || [];
+
+  const getStock = (s, c) => {
+    if (!s || !c) return null;
+    const v = variants.find((vv) => vv.size === s && vv.color === c);
+    return typeof v?.stock === "number" ? v.stock : null;
+  };
+
+  const selectedStock = useMemo(() => getStock(size, color), [size, color, productData]);
+
+  const availableColors = useMemo(() => {
+    if (!productData) return [];
+    return productData.colors?.length
+      ? productData.colors
+      : Object.keys(productData.colorImages || {});
+  }, [productData]);
+
+  const isSizeDisabled = (s) => {
+    if (!color) return false;
+    const stock = getStock(s, color);
+    return stock !== null && stock <= 0;
+  };
+
+  const isColorDisabled = (c) => {
+    if (!size) return false;
+    const stock = getStock(size, c);
+    return stock !== null && stock <= 0;
+  };
+
   const fetchProductData = async () => {
     products.forEach((item) => {
       if (item._id === productId) {
         setProductData(item);
-        setImage(item.image[0]);
+
+        const colorImgs = item.colorImages && Object.keys(item.colorImages).length ? item.colorImages : null;
+        if (colorImgs) {
+          const firstColor = Object.keys(colorImgs)[0];
+          const firstImg = colorImgs[firstColor]?.[0];
+          setColor(firstColor);
+          setImage(firstImg || item.image?.[0] || "");
+        } else {
+          setImage(item.image?.[0] || "");
+        }
       }
     });
   };
@@ -47,7 +87,7 @@ const Product = () => {
   const handleCommentSubmit = async (e) => {
     e.preventDefault();
     if (!comment || !rating) {
-      toast.error("Vui lòng nhập bình luận và chọn đánh giá"); // Sử dụng toast cho lỗi
+      toast.error("Vui lòng nhập bình luận và chọn đánh giá");
       return;
     }
     const newComment = await addComment(productId, comment, rating);
@@ -60,12 +100,18 @@ const Product = () => {
   };
 
   const handleAddToCart = () => {
-    if (!size) {
-      toast.error("Vui lòng chọn kích thước"); // Thông báo lỗi nếu chưa chọn size
+    if (!size || !color) {
+      toast.error("Vui lòng chọn size và màu");
       return;
     }
-    addToCart(productData._id, size);
-    toast.success("Đã thêm vào giỏ hàng thành công!"); // Thông báo thành công
+
+    const stock = getStock(size, color);
+    if (stock !== null && stock <= 0) {
+      toast.error("Biến thể này đã hết hàng");
+      return;
+    }
+
+    addToCart(productData._id, size, color);
   };
 
   useEffect(() => {
@@ -91,12 +137,14 @@ const Product = () => {
 
   return productData ? (
     <div className="border-t-2 pt-10 transition-opacity ease-in duration-500 opacity-100">
-      {/*----------- Product Data-------------- */}
       <div className="flex gap-12 sm:gap-12 flex-col sm:flex-row">
-        {/*---------- Product Images------------- */}
+        {/* Images */}
         <div className="flex-1 flex flex-col-reverse gap-3 sm:flex-row">
           <div className="flex sm:flex-col overflow-x-auto sm:overflow-y-scroll justify-between sm:justify-normal sm:w-[18.7%] w-full">
-            {productData.image.map((item, index) => (
+            {(productData.colorImages?.[color]?.length
+              ? productData.colorImages[color]
+              : productData.image
+            )?.map((item, index) => (
               <img
                 onClick={() => setImage(item)}
                 src={item}
@@ -111,7 +159,7 @@ const Product = () => {
           </div>
         </div>
 
-        {/* -------- Product Info ---------- */}
+        {/* Info */}
         <div className="flex-1">
           <h1 className="font-medium text-2xl mt-2">{productData.name}</h1>
           <div className="flex items-center gap-1 mt-2">
@@ -122,31 +170,79 @@ const Product = () => {
             {currency}
             {productData.price}
           </p>
-          <p className="mt-5 text-gray-500 md:w-4/5">
-            {productData.description}
-          </p>
-          <div className="flex flex-col gap-4 my-8">
-            <p>Select Size</p>
-            <div className="flex gap-2">
-              {productData.sizes.map((item, index) => (
-                <button
-                  onClick={() => setSize(item)}
-                  className={`border py-2 px-4 bg-gray-100 ${
-                    item === size ? "border-orange-500" : ""
-                  }`}
-                  key={index}
-                >
-                  {item}
-                </button>
-              ))}
+          <p className="mt-5 text-gray-500 md:w-4/5">{productData.description}</p>
+
+          {/* Color */}
+          <div className="flex flex-col gap-2 my-6">
+            <p>Chọn màu</p>
+            <div className="flex flex-wrap gap-2">
+              {availableColors.map((c, index) => {
+                const disabled = isColorDisabled(c);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (disabled) return;
+                      setColor(c);
+                      const imgs = productData.colorImages?.[c];
+                      if (imgs?.length) setImage(imgs[0]);
+                    }}
+                    className={`border py-2 px-4 bg-gray-100 text-sm ${
+                      c === color ? "border-orange-500" : ""
+                    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                    key={index}
+                    disabled={disabled}
+                    title={disabled ? "Hết hàng" : ""}
+                  >
+                    {c}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Size */}
+          <div className="flex flex-col gap-2 my-6">
+            <p>Chọn size</p>
+            <div className="flex flex-wrap gap-2">
+              {productData.sizes.map((s, index) => {
+                const disabled = isSizeDisabled(s);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (disabled) return;
+                      setSize(s);
+                    }}
+                    className={`border py-2 px-4 bg-gray-100 ${
+                      s === size ? "border-orange-500" : ""
+                    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                    key={index}
+                    disabled={disabled}
+                    title={disabled ? "Hết hàng" : ""}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+
+            {size && color && selectedStock !== null && (
+              <p className={`text-sm ${selectedStock > 0 ? "text-green-600" : "text-red-600"}`}>
+                Tồn kho: {selectedStock}
+              </p>
+            )}
+          </div>
+
           <button
-            onClick={handleAddToCart} // Sử dụng hàm handleAddToCart
-            className="bg-black text-white px-8 py-3 text-sm active:bg-gray-700"
+            type="button"
+            onClick={handleAddToCart}
+            className="bg-black text-white px-8 py-3 text-sm active:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={selectedStock !== null && selectedStock <= 0}
           >
             ADD TO CART
           </button>
+
           <hr className="mt-8 sm:w-4/5" />
           <div className="text-sm text-gray-500 mt-5 flex flex-col gap-1">
             <p>100% Original product.</p>
@@ -156,7 +252,7 @@ const Product = () => {
         </div>
       </div>
 
-      {/* ---------- Description & Review Section ------------- */}
+      {/* Description & Review */}
       <div className="mt-20">
         <div className="flex">
           <b
@@ -221,6 +317,7 @@ const Product = () => {
                   để viết bình luận.
                 </p>
               )}
+
               {comments.length > 0 ? (
                 comments.map((comment) => (
                   <div key={comment._id} className="mb-4">
@@ -244,11 +341,7 @@ const Product = () => {
         </div>
       </div>
 
-      {/* --------- display related products ---------- */}
-      <RelatedProducts
-        category={productData.category}
-        subCategory={productData.subCategory}
-      />
+      <RelatedProducts category={productData.category} subCategory={productData.subCategory} />
     </div>
   ) : (
     <div className="opacity-0"></div>

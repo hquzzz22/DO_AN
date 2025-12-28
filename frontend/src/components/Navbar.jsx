@@ -2,7 +2,7 @@ import React, { useContext, useState } from "react";
 import { assets } from "../assets/assets";
 import { Link, NavLink } from "react-router-dom";
 import { ShopContext } from "../context/ShopContext";
-
+// Thành phần Navbar hiển thị thanh điều hướng với các liên kết đến các trang khác nhau và các chức năng như tìm kiếm, giỏ hàng, và đăng nhập.
 const Navbar = () => {
   const [visible, setVisible] = useState(false);
 

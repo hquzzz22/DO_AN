@@ -1,5 +1,5 @@
 import React from "react";
-
+// Thành phần này hiển thị hộp đăng ký nhận bản tin.
 const NewsletterBox = () => {
   const onSubmitHandler = (event) => {
     event.preventDefault();

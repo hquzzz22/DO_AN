@@ -9,6 +9,7 @@ import {
   searchOrders,
   placeOrderVNPay,
   vnpayReturn,
+  vnpayIpn,
 } from "../controllers/orderController.js";
 import adminAuth from "../middleware/adminAuth.js";
 import authUser from "../middleware/auth.js";
@@ -27,6 +28,7 @@ orderRouter.post("/place", authUser, placeOrder);
 
 orderRouter.post("/vnpay", authUser, placeOrderVNPay);
 orderRouter.get("/vnpay-return", vnpayReturn);
+orderRouter.get("/vnpay-ipn", vnpayIpn);
 
 // User Feature
 orderRouter.post("/userorders", authUser, userOrders);

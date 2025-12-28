@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import validator from "validator";
 
 const Login = () => {
+  //Biến currentState có thể có 3 giá trị: "Login", "Sign Up", hoặc "Forgot Password".
   const [currentState, setCurrentState] = useState("Login");
   const { token, setToken, navigate, backendUrl } = useContext(ShopContext);
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { assets } from "../assets/assets";
-
+// Thành phần này hiển thị chân trang của trang web, bao gồm thông tin liên hệ và các liên kết.
 const Footer = () => {
   return (
     <div>

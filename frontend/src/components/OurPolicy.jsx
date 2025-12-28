@@ -1,6 +1,6 @@
 import React from "react";
 import { assets } from "../assets/assets";
-
+// Thành phần này hiển thị các chính sách của cửa hàng, bao gồm đổi trả, hoàn tiền và hỗ trợ khách hàng.
 const OurPolicy = () => {
   return (
     <div className="flex flex-col sm:flex-row justify-around gap-12 sm:gap-2 text-center py-20 text-xs sm:text-sm md:text-base text-gray-700">

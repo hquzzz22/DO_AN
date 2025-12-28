@@ -96,7 +96,9 @@ const PlaceOrder = () => {
               products.find((product) => product._id === items)
             );
             if (itemInfo) {
-              itemInfo.size = item;
+              const [size, color] = String(item).split("|");
+              itemInfo.size = size;
+              itemInfo.color = color;
               itemInfo.quantity = cartItems[items][item];
               orderItems.push(itemInfo);
             }

@@ -1,7 +1,7 @@
 import React from "react";
 import { assets } from "../assets/assets";
 import { NavLink } from "react-router-dom";
-
+// Thành phần này hiển thị hình ảnh nền và văn bản chào mừng cho trang chủ.
 const Hero = () => {
   return (
     <div className="relative w-full h-screen overflow-hidden ">
