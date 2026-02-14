@@ -234,16 +234,33 @@ function sortObject(obj) {
 function buildVnpSignData(params) {
   const sorted = sortObject(params);
   return Object.keys(sorted)
-    .map(
-      (key) =>
-        `${key}=${encodeURIComponent(String(sorted[key])).replace(/%20/g, "+")}`
-    )
+    .map((key) => {
+      const value = sorted[key];
+      return `${key}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`;
+    })
+    .join("&");
+}
+
+function buildVnpQueryString(params) {
+  const sorted = sortObject(params);
+  return Object.keys(sorted)
+    .map((key) => {
+      const value = sorted[key];
+      return `${key}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`;
+    })
     .join("&");
 }
 
 const placeOrderVNPay = async (req, res) => {
   try {
     const { userId, items, amount, address } = req.body;
+
+    if (!vnp_TmnCode || !vnp_HashSecret || !vnp_Url) {
+      return res.json({
+        success: false,
+        message: "Cấu hình VNPay trên server chưa hoàn tất (thiếu TMN_CODE hoặc HASH_SECRET)",
+      });
+    }
 
     const createDate = moment().format("YYYYMMDDHHmmss");
     const orderId = moment().format("HHmmss") + Math.floor(Math.random() * 10000);
@@ -276,7 +293,7 @@ const placeOrderVNPay = async (req, res) => {
     };
 
     const sortedParams = sortObject(vnp_Params);
-    const signData = buildVnpSignData(vnp_Params);
+    const signData = buildVnpSignData(sortedParams);
 
     const secureHash = crypto
       .createHmac("sha512", vnp_HashSecret)
@@ -285,7 +302,7 @@ const placeOrderVNPay = async (req, res) => {
 
     sortedParams.vnp_SecureHash = secureHash;
 
-    const paymentUrl = `${vnp_Url}?${qs.stringify(sortedParams, { encode: true })}`;
+    const paymentUrl = `${vnp_Url}?${buildVnpQueryString(sortedParams)}`;
 
     const orderItems = normalizeOrderItems(items);
     await fillVariantSnapshotForOrderItems(orderItems);
@@ -304,6 +321,7 @@ const placeOrderVNPay = async (req, res) => {
       amount,
       paymentMethod: "VNPay",
       payment: false,
+      paymentStatus: PAYMENT_STATUS.PENDING,
       status: ORDER_STATUS.NEW,
       date: Date.now(),
       vnpayTxnRef: orderId,
@@ -340,18 +358,43 @@ const vnpayReturn = async (req, res) => {
     const order = await orderModel.findOne({ vnpayTxnRef: vnp_Params.vnp_TxnRef });
     if (!order) return res.status(404).send("Order not found");
 
-    if (isSuccess && !order.payment) {
-      await decreaseVariantStockForOrder(order.items);
+    if (isSuccess) {
+      const updated = await orderModel.findOneAndUpdate(
+        { _id: order._id, payment: false },
+        {
+          $set: {
+            payment: true,
+            paymentStatus: PAYMENT_STATUS.PAID,
+            vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
+          },
+        },
+        { new: true }
+      );
+
+      if (updated) {
+        await decreaseVariantStockForOrder(order.items);
+      }
+    } else {
+      await orderModel.updateOne(
+        { _id: order._id },
+        {
+          $set: {
+            payment: false,
+            paymentStatus: PAYMENT_STATUS.FAILED,
+            vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
+          },
+        }
+      );
     }
 
-    await orderModel.updateOne(
-      { _id: order._id },
-      {
-        payment: isSuccess,
-        vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
-        status: isSuccess ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.FAILED,
-      }
-    );
+    // If order was already marked paid earlier (e.g. IPN processed first), persist transaction no if missing
+    if (isSuccess && order.payment === true && !order.vnpayTransactionNo) {
+      await orderModel.updateOne(
+        { _id: order._id },
+        { $set: { vnpayTransactionNo: vnp_Params.vnp_TransactionNo } }
+      );
+     
+    }
 
     const frontendSuccessUrl =
       process.env.FRONTEND_SUCCESS_URL || "http://localhost:5173/thank-you";
@@ -393,18 +436,34 @@ const vnpayIpn = async (req, res) => {
         rspCode = "01";
         message = "Order not found";
       } else {
-        if (isSuccess && !order.payment) {
-          await decreaseVariantStockForOrder(order.items);
-        }
+        if (isSuccess) {
+          const updated = await orderModel.findOneAndUpdate(
+            { _id: order._id, payment: false },
+            {
+              $set: {
+                payment: true,
+                paymentStatus: PAYMENT_STATUS.PAID,
+                vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
+              },
+            },
+            { new: true }
+          );
 
-        await orderModel.updateOne(
-          { _id: order._id },
-          {
-            payment: isSuccess,
-            vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
-            status: isSuccess ? PAYMENT_STATUS.PAID : PAYMENT_STATUS.FAILED,
+          if (updated) {
+            await decreaseVariantStockForOrder(order.items);
           }
-        );
+        } else {
+          await orderModel.updateOne(
+            { _id: order._id },
+            {
+              $set: {
+                payment: false,
+                paymentStatus: PAYMENT_STATUS.FAILED,
+                vnpayTransactionNo: vnp_Params.vnp_TransactionNo,
+              },
+            }
+          );
+        }
 
         rspCode = "00";
         message = "Confirm success";

@@ -26,6 +26,7 @@ const orderSchema = new mongoose.Schema({
   status: { type: String, required: true, default: "Order Placed" },
   paymentMethod: { type: String, required: true },
   payment: { type: Boolean, required: true, default: false },
+  paymentStatus: { type: String, required: true, default: "Chưa thanh toán" },
   date: { type: Number, required: true },
   vnpayTxnRef: { type: String, required: false }, // Mã tham chiếu giao dịch VNPay
   vnpayTransactionNo: { type: String, required: false }, // Mã giao dịch tại VNPay
